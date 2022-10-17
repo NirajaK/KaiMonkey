@@ -27,7 +27,7 @@ resource "aws_iam_role" "km_ecs_task_execution_role" {
 EOF
 
   tags = merge(var.default_tags, {
-    name        = "km_ecs_task_execution_role_${var.environment}"
+    name = "km_ecs_task_execution_role_${var.environment}"
   })
 }
 
@@ -76,6 +76,11 @@ resource "aws_ecs_cluster" "km_ecs_cluster" {
   tags = merge(var.default_tags, {
     Name = "km_ecs_cluster_${var.environment}"
   })
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 }
 
 resource "aws_ecs_task_definition" "km_ecs_task" {
@@ -104,9 +109,9 @@ resource "aws_ecs_service" "km_ecs_service" {
     container_port   = 80
   }
   network_configuration {
-    assign_public_ip = true
+    assign_public_ip = false
     subnets          = var.private_subnet
-    security_groups  = [ var.elb_sg ]
+    security_groups  = [var.elb_sg]
   }
   tags = merge(var.default_tags, {
   })
@@ -114,19 +119,32 @@ resource "aws_ecs_service" "km_ecs_service" {
 
 resource "aws_cloudwatch_log_group" "km_log_group" {
   name              = "km_log_group_${var.environment}"
-  retention_in_days = 1
+  retention_in_days = 120
 
   tags = merge(var.default_tags, {
     Name = "km_log_group_${var.environment}"
   })
+
+  kms_key_id = "<kms_key_id>"
 }
 
-resource "aws_instance" "km_vm"{
-  ami = data.aws_ami.ubuntu_ami.id
-  instance_type = "t2.micro"
-  vpc_security_group_ids = [ var.elb_sg ]
-  subnet_id = var.public_subnet[0]
+resource "aws_instance" "km_vm" {
+  ami                    = data.aws_ami.ubuntu_ami.id
+  instance_type          = "t2.micro"
+  vpc_security_group_ids = [var.elb_sg]
+  subnet_id              = var.public_subnet[0]
   tags = merge(var.default_tags, {
     Name = "km_vm_${var.environment}"
   })
+
+  metadata_options {
+    http_endpoint = "disabled"
+    http_tokens   = "required"
+  }
+  monitoring = true
+
+  metadata_options {
+    http_endpoint = "disabled"
+    http_tokens   = "required"
+  }
 }
