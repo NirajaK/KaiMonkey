@@ -44,7 +44,7 @@ resource "aws_subnet" "km_public_subnet" {
   cidr_block              = cidrsubnet(aws_vpc.km_vpc.cidr_block, 8, var.az_count + count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   vpc_id                  = aws_vpc.km_vpc.id
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = merge(var.default_tags, {
     Name = "km_public_subnet_${var.environment}"
@@ -108,14 +108,14 @@ resource "aws_security_group" "km_alb_sg" {
     protocol    = "tcp"
     from_port   = 443
     to_port     = 443
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["<cidr>"]
   }
 
   ingress {
     protocol    = "tcp"
     from_port   = 80
     to_port     = 80
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["<cidr>"]
   }
 
   egress {
@@ -157,24 +157,135 @@ resource "aws_lb" "km_lb" {
   name            = "km-lb-${var.environment}"
   subnets         = aws_subnet.km_public_subnet.*.id
   security_groups = [aws_security_group.km_alb_sg.id]
+
+  access_logs {
+    bucket  = "<s3_bucket_name>"
+    enabled = true
+  }
 }
 
 resource "aws_lb_target_group" "km_lb_target" {
   name        = "km-lb-target-group-${var.environment}"
   port        = 80
-  protocol    = "HTTP"
+  protocol    = "HTTPS"
   vpc_id      = aws_vpc.km_vpc.id
   target_type = "ip"
-  depends_on = [ aws_lb.km_lb ]
+  depends_on  = [aws_lb.km_lb]
 }
 
 # Redirect all traffic from the ALB to the target group
 resource "aws_lb_listener" "km_frontend_listener" {
   load_balancer_arn = aws_lb.km_lb.arn
   port              = "80"
-  protocol          = "HTTP"
+  protocol          = "HTTPS"
   default_action {
     target_group_arn = aws_lb_target_group.km_lb_target.arn
     type             = "forward"
   }
+}
+resource "aws_flow_log" "km_vpc" {
+  vpc_id          = "${aws_vpc.km_vpc.id}"
+  iam_role_arn    = "<iam_role_arn>"
+  log_destination = "${aws_s3_bucket.km_vpc.arn}"
+  traffic_type    = "ALL"
+
+  tags = {
+    GeneratedBy      = "Accurics"
+    ParentResourceId = "aws_vpc.km_vpc"
+  }
+}
+resource "aws_s3_bucket" "km_vpc" {
+  bucket        = "km_vpc_flow_log_s3_bucket"
+  acl           = "private"
+  force_destroy = true
+
+  versioning {
+    enabled    = true
+    mfa_delete = true
+  }
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+resource "aws_s3_bucket_policy" "km_vpc" {
+  bucket = "${aws_s3_bucket.km_vpc.id}"
+
+  policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "km_vpc-restrict-access-to-users-or-roles",
+      "Effect": "Allow",
+      "Principal": [
+        {
+          "AWS": [
+            <principal_arn>
+          ]
+        }
+      ],
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${aws_s3_bucket.km_vpc.id}/*"
+    }
+  ]
+}
+POLICY
+}
+resource "aws_flow_log" "km_vpc" {
+  vpc_id          = "${aws_vpc.km_vpc.id}"
+  iam_role_arn    = "<iam_role_arn>"
+  log_destination = "${aws_s3_bucket.km_vpc.arn}"
+  traffic_type    = "ALL"
+
+  tags = {
+    GeneratedBy      = "Accurics"
+    ParentResourceId = "aws_vpc.km_vpc"
+  }
+}
+resource "aws_s3_bucket" "km_vpc" {
+  bucket        = "km_vpc_flow_log_s3_bucket"
+  acl           = "private"
+  force_destroy = true
+
+  versioning {
+    enabled    = true
+    mfa_delete = true
+  }
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+resource "aws_s3_bucket_policy" "km_vpc" {
+  bucket = "${aws_s3_bucket.km_vpc.id}"
+
+  policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "km_vpc-restrict-access-to-users-or-roles",
+      "Effect": "Allow",
+      "Principal": [
+        {
+          "AWS": [
+            <principal_arn>
+          ]
+        }
+      ],
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${aws_s3_bucket.km_vpc.id}/*"
+    }
+  ]
+}
+POLICY
 }
