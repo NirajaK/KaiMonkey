@@ -243,7 +243,7 @@ resource "aws_security_group" "web-app-security-group" {
   }
 
   ingress {
-    cidr_blocks      = ["0.0.0.0/0"]
+    cidr_blocks      = ["<cidr>"]
     from_port        = 22
     ipv6_cidr_blocks = ["::/0"]
     protocol         = "tcp"
@@ -252,7 +252,7 @@ resource "aws_security_group" "web-app-security-group" {
   }
 
   ingress {
-    cidr_blocks      = ["0.0.0.0/0"]
+    cidr_blocks      = ["<cidr>"]
     from_port        = 80
     ipv6_cidr_blocks = ["::/0"]
     protocol         = "tcp"
@@ -261,7 +261,7 @@ resource "aws_security_group" "web-app-security-group" {
   }
 
   ingress {
-    cidr_blocks      = ["0.0.0.0/0"]
+    cidr_blocks      = ["<cidr>"]
     from_port        = 8080
     ipv6_cidr_blocks = ["::/0"]
     protocol         = "tcp"
@@ -313,12 +313,13 @@ resource "aws_instance" "web-app-instance" {
   key_name           = aws_key_pair.cg-ec2-key-pair.key_name
 
   metadata_options {
-    http_endpoint               = "enabled"
+    http_endpoint               = "disabled"
     http_put_response_hop_limit = "1"
-    http_tokens                 = "optional"
+    http_tokens                 = "required"
+
   }
 
-  monitoring = "false"
+  monitoring = true
   private_ip = "10.10.10.55"
 
   root_block_device {
@@ -385,12 +386,13 @@ resource "aws_instance" "privileged-instance" {
   key_name             = aws_key_pair.cg-ec2-key-pair.key_name
 
   metadata_options {
-    http_endpoint               = "enabled"
+    http_endpoint               = "disabled"
     http_put_response_hop_limit = "1"
-    http_tokens                 = "optional"
+    http_tokens                 = "required"
+
   }
 
-  monitoring = "false"
+  monitoring = true
   private_ip = "10.10.20.69"
 
   root_block_device {
@@ -421,4 +423,58 @@ resource "aws_instance" "privileged-instance" {
 output "public_dns" {
   description = "List of public DNS names assigned to the instances. For EC2-VPC, this is only available if you've enabled DNS hostnames for your VPC"
   value       = aws_instance.web-app-instance.public_dns
+}
+
+resource "aws_flow_log" "demo-vpc" {
+  vpc_id          = "${aws_vpc.demo-vpc.id}"
+  iam_role_arn    = "<iam_role_arn>"
+  log_destination = "${aws_s3_bucket.demo-vpc.arn}"
+  traffic_type    = "ALL"
+
+  tags = {
+    GeneratedBy      = "Accurics"
+    ParentResourceId = "aws_vpc.demo-vpc"
+  }
+}
+resource "aws_s3_bucket" "demo-vpc" {
+  bucket        = "demo-vpc_flow_log_s3_bucket"
+  acl           = "private"
+  force_destroy = true
+
+  versioning {
+    enabled    = true
+    mfa_delete = true
+  }
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+resource "aws_s3_bucket_policy" "demo-vpc" {
+  bucket = "${aws_s3_bucket.demo-vpc.id}"
+
+  policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "demo-vpc-restrict-access-to-users-or-roles",
+      "Effect": "Allow",
+      "Principal": [
+        {
+          "AWS": [
+            <principal_arn>
+          ]
+        }
+      ],
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${aws_s3_bucket.demo-vpc.id}/*"
+    }
+  ]
+}
+POLICY
 }
