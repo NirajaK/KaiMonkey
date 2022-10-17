@@ -61,6 +61,7 @@ resource "aws_db_instance" "km_db" {
   tags = merge(var.default_tags, {
     Name = "km_db_${var.environment}"
   })
+  backup_retention_period = 30
 }
 
 resource "aws_ssm_parameter" "km_ssm_db_host" {
